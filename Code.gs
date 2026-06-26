@@ -58,6 +58,20 @@ function doPost(e) {
     return _json({ ok: true });
   }
 
+  // feature out-of-service: cambia el estado de un punto ("active" / "down")
+  if (datos.action === "setStatus") {
+    var idC = cab.indexOf("id");
+    var stC = cab.indexOf("status");
+    var fs  = SHEET.getDataRange().getValues();
+    for (var j = 1; j < fs.length; j++) {
+      if (fs[j][idC] === datos.id) {
+        SHEET.getRange(j + 1, stC + 1).setValue(datos.status);
+        break;
+      }
+    }
+    return _json({ ok: true });
+  }
+
   return _json({ ok: false, error: "accion desconocida" });
 }
 

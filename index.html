@@ -18,6 +18,12 @@
     CENTER: [8.0, -66.0],         // Venezuela
     ZOOM: 6
   };
+
+  // Módulos opcionales (carpeta features/). Poné false para deshabilitar uno.
+  const FEATURES = {
+    nearest: false,       // botón "WiFi más cercano" — DESHABILITADO (activar tras validar)
+    outOfService: false   // marcar / reactivar puntos sin servicio — DESHABILITADO (activar tras validar)
+  };
 </script>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -300,13 +306,13 @@
   async function loadPoints(){
     if(LOCAL){
       try{ points = JSON.parse(localStorage.getItem(LS_KEY)||"[]"); }catch(e){ points=[]; }
-      render(); return;
+      render(); emit("points:loaded", points); return;
     }
     try{
       const r = await fetch(CONFIG.API_URL, {method:"GET"});
       const data = await r.json();
       points = Array.isArray(data) ? data : (data.points||[]);
-      render();
+      render(); emit("points:loaded", points);
     }catch(e){
       toast("No se pudo cargar. Reintentá.");
     }
@@ -318,6 +324,8 @@
         points.push(payload);
       }else if(action==="confirm"){
         const p = points.find(x=>x.id===payload.id); if(p) p.confirms=(p.confirms||0)+1;
+      }else if(action==="setStatus"){
+        const p = points.find(x=>x.id===payload.id); if(p) p.status=payload.status;
       }
       localStorage.setItem(LS_KEY, JSON.stringify(points));
       return {ok:true};
@@ -422,6 +430,9 @@
         toast("Confirmación registrada.");
       }catch(err){ btn.disabled=false; }
     });
+    const pid = btn && btn.getAttribute("data-confirm");
+    const point = pid && points.find(x=>x.id===pid);
+    if(point) emit("popup:open", {point, popupEl:node, marker:markers[pid]});
   });
 
   // ---------- Util ----------
@@ -437,6 +448,31 @@
     const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
     clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2600);
   }
+
+  // ---------- Hooks (sistema de eventos para los módulos) ----------
+  const _hooks = {};
+  function on(ev, fn){ (_hooks[ev] || (_hooks[ev]=[])).push(fn); return window.WifiApp; }
+  function emit(ev, data){ (_hooks[ev]||[]).forEach(fn=>{ try{ fn(data); }catch(e){ console.error("[hook "+ev+"]", e); } }); }
+
+  // ---------- API pública para los módulos de features/ ----------
+  // Los features solo hablan con este objeto: no tocan variables internas del core.
+  // Eventos disponibles: "points:loaded" (data: array de puntos),
+  //                      "popup:open" (data: {point, popupEl, marker}).
+  window.WifiApp = {
+    CONFIG, map,
+    get points(){ return points; },
+    get markers(){ return markers; },
+    render, toast, send,
+    colorFor, icon, popupHtml, esc, ago,
+    on,
+    feature(def){
+      if(!def || !def.name || typeof def.init !== "function") return;
+      const flags = (typeof FEATURES !== "undefined") ? FEATURES : {};
+      if(flags[def.name] === false) return;          // deshabilitado desde el <head>
+      try{ def.init(window.WifiApp); }
+      catch(e){ console.error("[feature "+def.name+"]", e); }
+    }
+  };
 
   // ---------- Init ----------
   document.getElementById("mode-label").textContent = LOCAL ? "Modo local (sin compartir)" : "En vivo · colaborativo";
@@ -525,5 +561,8 @@
   try{ if(!localStorage.getItem(SEEN)) open(); }catch(e){ open(); }
 })();
 </script>
+<!-- ===== MÓDULOS (features/) — se cargan después del core; se activan/desactivan con FEATURES en el <head> ===== -->
+<script src="features/nearest.js"></script>
+<script src="features/out-of-service.js"></script>
 </body>
 </html>

@@ -22,11 +22,14 @@ Aplicación web de una sola página para reportar y encontrar puntos con señal 
 ## Estructura del proyecto
 
 ```
-index.html      # Toda la aplicación (HTML + CSS + JS, sin dependencias locales)
-worker.js       # Cloudflare Worker: sirve los estáticos y proxea /api → Apps Script
-Code.gs         # Backend de Google Apps Script (lee/escribe en la hoja de cálculo)
-wrangler.jsonc  # Configuración de despliegue del Worker (Cloudflare)
-.assetsignore   # Excluye worker.js, Code.gs, etc. de servirse como estáticos públicos
+index.html               # Núcleo (core): mapa, formulario y API pública WifiApp
+features/                # Módulos opcionales (se activan/desactivan desde index.html)
+  nearest.js             #   "WiFi más cercano": vuela al punto activo más próximo
+  out-of-service.js      #   Marcar / reactivar puntos sin servicio
+worker.js                # Cloudflare Worker: sirve los estáticos y proxea /api → Apps Script
+Code.gs                  # Backend de Google Apps Script (lee/escribe en la hoja de cálculo)
+wrangler.jsonc           # Configuración de despliegue del Worker (Cloudflare)
+.assetsignore            # Excluye worker.js, Code.gs, etc. de servirse como estáticos públicos
 ```
 
 ## Configuración
@@ -48,6 +51,67 @@ const CONFIG = {
 | `ZOOM`     | Nivel de zoom inicial (0–19). |
 
 > La URL `/exec` del Apps Script **no va en `index.html`**: se configura en la constante `APPS_SCRIPT` de `worker.js`.
+
+## Módulos (features)
+
+Las funcionalidades opcionales viven en la carpeta [`features/`](features/) como módulos independientes. El núcleo no depende de ninguno.
+
+### Habilitar / deshabilitar un módulo
+
+Se controla **únicamente** desde el bloque `FEATURES`, al inicio de `index.html` (dentro del primer `<script>`, junto a `CONFIG`):
+
+```js
+const FEATURES = {
+  nearest: false,       // true = activado · false = desactivado
+  outOfService: false
+};
+```
+
+- **Deshabilitar:** poné su flag en `false`. El módulo queda inerte (su `<script>` se carga pero no se inicializa) y el comportamiento es idéntico a no tenerlo. **No hay que tocar nada más.**
+- **Habilitar:** poné su flag en `true`.
+- Después de cambiar un flag hay que **volver a desplegar** (`npx wrangler deploy`) para que tome efecto en producción.
+
+> Estado actual en el repo: **ambos módulos están en `false`** (se despliegan sin activar). Ver [Despliegue seguro y rollback](#despliegue-seguro-y-rollback) para activarlos de forma gradual.
+
+### Cómo funciona
+
+El core expone una API mínima en `window.WifiApp`; los módulos **solo hablan con ella** (no tocan variables internas), lo que evita el acoplamiento:
+
+| Miembro | Para qué |
+|---------|----------|
+| `app.map` | el mapa Leaflet |
+| `app.points` · `app.markers` | datos y marcadores (lectura) |
+| `app.render()` · `app.toast(msg)` · `app.send(action, payload)` | acciones del core |
+| `app.icon(p)` · `app.popupHtml(p)` · `app.colorFor(p)` | helpers de render |
+| `app.on(evento, fn)` | engancharse a eventos del core |
+| `app.feature({ name, init })` | registrar el módulo |
+
+**Eventos disponibles:** `points:loaded` (datos: array de puntos) y `popup:open` (datos: `{ point, popupEl, marker }`).
+
+### Crear un módulo nuevo
+
+1. Crear `features/mi-modulo.js`:
+
+   ```js
+   (function(){
+     "use strict";
+     WifiApp.feature({
+       name: "miModulo",
+       init(app){
+         // armá tu UI y tu lógica acá, usando solo `app`
+       }
+     });
+   })();
+   ```
+
+2. Agregar su flag en `FEATURES` (`miModulo: true`) y su `<script src="features/mi-modulo.js"></script>` antes de `</body>` en `index.html`.
+
+> **Nota:** se usan `<script>` planos a propósito (no ES Modules), para que `index.html` siga funcionando al abrirlo como archivo local (`file://`), donde los módulos ES fallan por CORS.
+
+### Módulos incluidos
+
+- **`nearest.js`** — botón "📍 WiFi cercano": pide el GPS y vuela al punto **activo** más cercano, mostrando la distancia. Autocontenido, sin backend.
+- **`out-of-service.js`** — agrega un botón en el globo para marcar un punto como **sin servicio** (o reactivarlo). Requiere el caso `setStatus` en `doPost` (ya incluido en `Code.gs`); en modo local funciona sin backend.
 
 ## Uso
 
@@ -81,6 +145,42 @@ npx wrangler deploy
 ```
 
 El Worker sirve `index.html` y los demás estáticos, y atiende la ruta `/api` como proxy hacia Apps Script. Tras cambiar la URL del Apps Script se edita `worker.js` (no `index.html`) y se vuelve a desplegar.
+
+### Despliegue seguro y rollback
+
+Como el sitio está **online**, conviene validar cada cambio antes de activarlo en producción. De menos a más seguro:
+
+**1. Previsualizar sin afectar producción** *(recomendado)* — sube una versión nueva y devuelve una URL de preview, sin activarla:
+
+```bash
+npx wrangler versions upload      # imprime una URL de preview para probar
+npx wrangler versions deploy      # recién acá la promovés a producción
+```
+
+**2. Correrlo local** — levanta el Worker + estáticos en tu máquina:
+
+```bash
+npx wrangler dev                  # abrí http://localhost:8787 y revisá la consola
+```
+
+Las lecturas pegan al Apps Script real (seguras); una escritura de prueba agrega una fila que después borrás.
+
+**3. Chequeo de sintaxis de los módulos** antes de subir:
+
+```bash
+node --check features/nearest.js
+node --check features/out-of-service.js
+```
+
+**Red de seguridad — rollback.** Cloudflare guarda el historial de versiones. Si algo se ve mal después de publicar, revertís en segundos:
+
+```bash
+npx wrangler rollback
+```
+
+(o desde el dashboard → Workers → tu Worker → **Deployments → Rollback**).
+
+> **Activar módulos nuevos de forma gradual:** subí primero con los flags de `FEATURES` en `false` (sin cambios de comportamiento), validá que el core y el proxy funcionan, y en un segundo deploy activá un módulo por vez poniendo su flag en `true`. Así aislás cualquier problema a un solo cambio.
 
 ## Leyenda del mapa
 
