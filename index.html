@@ -302,14 +302,18 @@
       try{ points = JSON.parse(localStorage.getItem(LS_KEY)||"[]"); }catch(e){ points=[]; }
       render(); return;
     }
-    try{
-      const r = await fetch(CONFIG.API_URL, {method:"GET"});
-      const data = await r.json();
-      points = Array.isArray(data) ? data : (data.points||[]);
-      render();
-    }catch(e){
-      toast("No se pudo cargar. Reintentá.");
-    }
+    // JSONP: el <script> esquiva el CORS del redirect 302 de Apps Script
+    return new Promise(resolve=>{
+      const cb = "__cb_" + Date.now();
+      const s = document.createElement("script");
+      window[cb] = data=>{
+        points = Array.isArray(data) ? data : (data.points||[]);
+        render(); delete window[cb]; s.remove(); resolve();
+      };
+      s.onerror = ()=>{ toast("No se pudo cargar. Reintentá."); delete window[cb]; s.remove(); resolve(); };
+      s.src = CONFIG.API_URL + (CONFIG.API_URL.indexOf("?")>-1?"&":"?") + "callback=" + cb;
+      document.body.appendChild(s);
+    });
   }
 
   async function send(action, payload){
@@ -322,13 +326,13 @@
       localStorage.setItem(LS_KEY, JSON.stringify(points));
       return {ok:true};
     }
-    // text/plain evita el preflight CORS con Apps Script
-    const r = await fetch(CONFIG.API_URL, {
-      method:"POST",
+    // escritura sin CORS; respuesta opaca, el mapa ya se actualiza optimista en el submit
+    await fetch(CONFIG.API_URL, {
+      method:"POST", mode:"no-cors",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify({action, ...payload})
     });
-    return r.json();
+    return {ok:true};
   }
 
   // ---------- Selección de ubicación ----------
