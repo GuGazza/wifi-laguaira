@@ -1,5 +1,7 @@
 # Mapa de Puntos WiFi — La Guaira (Emergencia)
 
+## [mapa.wifi-laguaira.workers.dev](https://mapa.wifi-laguaira.workers.dev)
+
 Aplicación web de una sola página para reportar y encontrar puntos con señal WiFi durante situaciones de emergencia. Diseñada para operar sin instalación, desde cualquier navegador móvil, con o sin backend.
 
 ## ¿Qué hace?
@@ -147,3 +149,19 @@ Si se prefiere conservar el historial pero ocultar visualmente un punto, se pued
 - Para el modo colaborativo, el backend de Google Apps Script debe aceptar peticiones `POST` con `Content-Type: text/plain` (requerido para evitar el preflight CORS de Apps Script).
 - Starlink y otros sistemas satelitales requieren cielo despejado; recomendable indicarlo en la nota del punto reportado.
 - El modo local persiste datos en `localStorage` bajo la clave `starlink_points_v1`.
+
+## Contribuciones y forks
+
+Este proyecto nació como respuesta a una emergencia y es intencionalmente simple: un solo archivo HTML, sin dependencias locales, para que cualquiera pueda levantarlo en minutos.
+
+Si querés mejorarlo, adaptarlo a tu ciudad o agregar funcionalidades, **hacé un fork y construí tu versión**. Algunas ideas que pueden sumarle valor:
+
+- Panel de administración para moderar puntos desde el navegador.
+- Filtros por tipo de acceso (abierta / con clave).
+- Soporte para adjuntar fotos del lugar.
+- Versión PWA instalable con notificaciones de nuevos puntos.
+- Adaptación del backend a Supabase, Firebase u otro servicio gratuito.
+
+Toda mejora que quieras compartir es bienvenida vía pull request.
+
+**Gracias a quienes reportaron puntos, confirmaron señal y compartieron el mapa durante la emergencia.** Cada dato cargado fue conectividad real para alguien que la necesitaba.
