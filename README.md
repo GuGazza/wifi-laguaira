@@ -6,7 +6,6 @@ Aplicación web de una sola página para reportar y encontrar puntos con señal 
 
 ## En memoria
 
-> En memoria de Elias Dayoud Padre, Eduard Twail y su hermosa familia.
 > Que viva La Guaira. Siempre en el Corazón, que Dios los tenga en su Gloria.
 
 
