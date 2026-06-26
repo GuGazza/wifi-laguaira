@@ -445,5 +445,85 @@
   if(!LOCAL) setInterval(loadPoints, 30000); // refresco cada 30 s
 })();
 </script>
+<!-- ===== MÓDULO DE AYUDA (pegar antes de </body>) ===== -->
+<script>
+(function(){
+  "use strict";
+  var SEEN = "starlink_help_seen_v1";
+
+  // estilos
+  var css = document.createElement("style");
+  css.textContent = `
+    .help-btn{position:fixed;top:calc(env(safe-area-inset-top) + 62px);right:10px;z-index:1350;
+      width:40px;height:40px;border-radius:50%;border:none;cursor:pointer;
+      background:#fff;color:var(--signal-ink,#06727f);font-size:20px;font-weight:800;
+      box-shadow:0 4px 14px rgba(15,27,45,.22)}
+    .help-btn:active{transform:scale(.94)}
+    .help-scrim{position:fixed;inset:0;background:rgba(15,27,45,.55);z-index:1400;
+      display:none;align-items:flex-end;justify-content:center}
+    .help-scrim.show{display:flex}
+    .help-card{background:#fff;width:100%;max-width:440px;border-radius:20px 20px 0 0;
+      padding:18px 18px calc(env(safe-area-inset-bottom) + 18px);box-shadow:0 -8px 30px rgba(15,27,45,.3)}
+    @media(min-width:520px){.help-scrim{align-items:center}.help-card{border-radius:20px}}
+    .help-card h2{margin:2px 0 4px;font-size:19px;font-weight:720;color:var(--ink,#0f1b2d)}
+    .help-card .sub{margin:0 0 16px;font-size:13px;color:var(--muted,#5c6b7e)}
+    .help-step{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start}
+    .help-step .ic{flex:none;width:30px;height:30px;border-radius:9px;background:var(--surface-2,#f3f6fa);
+      display:flex;align-items:center;justify-content:center;font-size:16px}
+    .help-step b{font-size:14px;color:var(--ink,#0f1b2d)}
+    .help-step p{margin:2px 0 0;font-size:13px;color:var(--muted,#5c6b7e);line-height:1.45}
+    .help-step i{font-style:normal;display:inline-block;width:9px;height:9px;border-radius:50%;
+      vertical-align:middle;margin:0 2px}
+    .help-tip{background:#fff4dc;border:1px solid #f0d28a;color:#6b4e07;font-size:12.5px;
+      font-weight:600;padding:9px 12px;border-radius:10px;margin:2px 0 16px}
+    .help-ok{width:100%;padding:14px;border:none;border-radius:12px;cursor:pointer;
+      background:var(--signal,#0aa6b8);color:#fff;font-size:16px;font-weight:700}
+    @media(prefers-reduced-motion:reduce){.help-btn{transition:none}}
+  `;
+  document.head.appendChild(css);
+
+  // botón "?"
+  var btn = document.createElement("button");
+  btn.className = "help-btn"; btn.setAttribute("aria-label","Cómo se usa"); btn.textContent = "?";
+  document.body.appendChild(btn);
+
+  // tarjeta
+  var scrim = document.createElement("div");
+  scrim.className = "help-scrim"; scrim.setAttribute("role","dialog"); scrim.setAttribute("aria-modal","true");
+  scrim.innerHTML = `
+    <div class="help-card">
+      <h2>Mapa de puntos con internet</h2>
+      <p class="sub">Encontrá dónde conectarte por Starlink, o compartí un lugar con señal.</p>
+
+      <div class="help-step"><div class="ic">📍</div><div>
+        <b>Los puntos del mapa tienen internet</b>
+        <p><i style="background:var(--open,#1f9d57)"></i>verde = WiFi abierta &nbsp;·&nbsp;
+           <i style="background:var(--key,#d98a04)"></i>naranja = con clave</p></div></div>
+
+      <div class="help-step"><div class="ic">👆</div><div>
+        <b>Tocá un punto</b>
+        <p>Ves el lugar, la nota y el botón <b>Cómo llegar</b>.</p></div></div>
+
+      <div class="help-step"><div class="ic">➕</div><div>
+        <b>¿Conocés un lugar con señal? Reportalo</b>
+        <p>Tocá <b>Reportar punto</b>, marcá en el mapa o usá <b>Mi ubicación</b>, y publicá. Ayudás a otros.</p></div></div>
+
+      <div class="help-tip">⚠️ Starlink necesita cielo despejado: usalo al aire libre, lejos de techos y paredes.</div>
+      <button class="help-ok">Entendido</button>
+    </div>`;
+  document.body.appendChild(scrim);
+
+  function open(){ scrim.classList.add("show"); }
+  function close(){ scrim.classList.remove("show"); try{ localStorage.setItem(SEEN,"1"); }catch(e){} }
+
+  btn.addEventListener("click", open);
+  scrim.querySelector(".help-ok").addEventListener("click", close);
+  scrim.addEventListener("click", function(e){ if(e.target === scrim) close(); });
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape") close(); });
+
+  // primera visita: mostrar sola
+  try{ if(!localStorage.getItem(SEEN)) open(); }catch(e){ open(); }
+})();
+</script>
 </body>
 </html>
