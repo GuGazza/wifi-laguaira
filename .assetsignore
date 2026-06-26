@@ -1,0 +1,11 @@
+# Archivos que NO deben servirse como estáticos públicos por Cloudflare.
+# Sintaxis estilo .gitignore. worker.js sigue funcionando como Worker
+# (es el "main" del bundle); esto solo evita que sea descargable en /worker.js.
+
+worker.js
+Code.gs
+wrangler.jsonc
+.assetsignore
+.gitignore
+.git/
+README.md
