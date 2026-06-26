@@ -25,7 +25,7 @@
       // Estilo propio del módulo (no toca el CSS del core).
       const css = document.createElement("style");
       css.textContent = `
-        .near-btn{position:fixed;left:10px;bottom:calc(env(safe-area-inset-bottom) + 150px);
+        .near-btn{position:fixed;left:10px;bottom:calc(env(safe-area-inset-bottom) + 175px);
           z-index:850;border:none;cursor:pointer;background:#fff;color:var(--signal-ink,#06727f);
           font-weight:650;font-size:13px;padding:10px 14px;border-radius:999px;
           box-shadow:var(--shadow,0 6px 24px rgba(15,27,45,.16));display:flex;align-items:center;gap:6px}

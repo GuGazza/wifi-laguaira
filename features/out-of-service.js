@@ -29,6 +29,13 @@
         if(!actions || actions.querySelector("[data-oos]")) return;   // ya agregado
 
         const down = point.status === "down";
+
+        // En puntos sin servicio, ocultar "Funciona": confirmar un caído no tiene sentido.
+        if(down){
+          const fb = actions.querySelector("[data-confirm]");
+          if(fb) fb.remove();
+        }
+
         const btn = document.createElement("button");
         btn.type = "button";
         btn.dataset.oos = "1";

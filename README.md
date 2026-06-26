@@ -110,8 +110,24 @@ El core expone una API mínima en `window.WifiApp`; los módulos **solo hablan c
 
 ### Módulos incluidos
 
-- **`nearest.js`** — botón "📍 WiFi cercano": pide el GPS y vuela al punto **activo** más cercano, mostrando la distancia. Autocontenido, sin backend.
-- **`out-of-service.js`** — agrega un botón en el globo para marcar un punto como **sin servicio** (o reactivarlo). Requiere el caso `setStatus` en `doPost` (ya incluido en `Code.gs`); en modo local funciona sin backend.
+#### `nearest.js` — "WiFi más cercano"
+
+Agrega un botón flotante **"📍 WiFi cercano"** abajo a la izquierda (sobre la leyenda). Al tocarlo:
+
+1. Pide la ubicación del usuario (GPS).
+2. El mapa vuela con animación al punto **activo** más cercano y le abre el globo.
+3. Muestra la distancia en un toast (ej.: *"WiFi más cercano: a 320 m"*).
+
+Solo considera puntos activos (ignora los marcados sin servicio). Si no hay GPS o no hay puntos activos, avisa con un toast y no rompe nada. Autocontenido, no necesita backend.
+
+#### `out-of-service.js` — marcar / reactivar puntos
+
+No tiene botón propio: actúa **dentro del globo** de cada punto.
+
+- En un punto **activo**, agrega el botón **"Sin servicio"**. Al tocarlo, el marcador pasa a **gris**, el contador de "activos" baja y el globo muestra el tag *"Sin servicio"*.
+- En un punto **caído**, agrega el botón **"Reactivar"** (verde) y **oculta "Funciona"** (confirmar un caído no tiene sentido). Al reactivarlo vuelve a su color y suma al contador.
+
+Requiere el caso `setStatus` en `doPost` (ya incluido en `Code.gs`); en modo local funciona sin backend.
 
 ## Uso
 
