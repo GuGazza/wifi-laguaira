@@ -14,7 +14,7 @@
      =========================================================== -->
 <script>
   const CONFIG = {
-    API_URL: "https://script.google.com/macros/s/AKfycbzx36igENhcd6v-FQPGU1YnW0dupb7J91akR7wgo-lRoW-q9Y2gA9lkHABNq-1glJEqWg/exec",                  // pegá aquí la URL /exec del Apps Script
+    API_URL: "/api",              // mismo origen: el Worker de Cloudflare hace de proxy al Apps Script
     CENTER: [8.0, -66.0],         // Venezuela
     ZOOM: 6
   };
@@ -302,18 +302,14 @@
       try{ points = JSON.parse(localStorage.getItem(LS_KEY)||"[]"); }catch(e){ points=[]; }
       render(); return;
     }
-    // JSONP: el <script> esquiva el CORS del redirect 302 de Apps Script
-    return new Promise(resolve=>{
-      const cb = "__cb_" + Date.now();
-      const s = document.createElement("script");
-      window[cb] = data=>{
-        points = Array.isArray(data) ? data : (data.points||[]);
-        render(); delete window[cb]; s.remove(); resolve();
-      };
-      s.onerror = ()=>{ toast("No se pudo cargar. Reintentá."); delete window[cb]; s.remove(); resolve(); };
-      s.src = CONFIG.API_URL + (CONFIG.API_URL.indexOf("?")>-1?"&":"?") + "callback=" + cb;
-      document.body.appendChild(s);
-    });
+    try{
+      const r = await fetch(CONFIG.API_URL, {method:"GET"});
+      const data = await r.json();
+      points = Array.isArray(data) ? data : (data.points||[]);
+      render();
+    }catch(e){
+      toast("No se pudo cargar. Reintentá.");
+    }
   }
 
   async function send(action, payload){
@@ -326,13 +322,13 @@
       localStorage.setItem(LS_KEY, JSON.stringify(points));
       return {ok:true};
     }
-    // escritura sin CORS; respuesta opaca, el mapa ya se actualiza optimista en el submit
-    await fetch(CONFIG.API_URL, {
-      method:"POST", mode:"no-cors",
+    // el Worker proxy responde mismo-origen, así que la respuesta es legible
+    const r = await fetch(CONFIG.API_URL, {
+      method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify({action, ...payload})
     });
-    return {ok:true};
+    return r.json();
   }
 
   // ---------- Selección de ubicación ----------
