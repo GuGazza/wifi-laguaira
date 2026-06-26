@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Mapa de Puntos WiFi - La Guaira — Emergencia</title>
+
+<!-- ===========================================================
+     CONFIGURACIÓN
+     -----------------------------------------------------------
+     API_URL vacío  -> modo LOCAL (solo este dispositivo, para probar).
+     API_URL con la URL del backend (Google Apps Script) -> COLABORATIVO real.
+     CENTER/ZOOM    -> vista inicial del mapa.
+     =========================================================== -->
+<script>
+  const CONFIG = {
+    API_URL: "https://script.google.com/macros/s/AKfycbzx36igENhcd6v-FQPGU1YnW0dupb7J91akR7wgo-lRoW-q9Y2gA9lkHABNq-1glJEqWg/exec",                  // pegá aquí la URL /exec del Apps Script
+    CENTER: [8.0, -66.0],         // Venezuela
+    ZOOM: 6
+  };
+</script>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root{
+    --ink:#0f1b2d;          /* base oscura */
+    --surface:#ffffff;
+    --surface-2:#f3f6fa;
+    --line:#dbe3ec;
+    --muted:#5c6b7e;
+    --signal:#0aa6b8;       /* acento conectividad */
+    --signal-ink:#06727f;
+    --open:#1f9d57;         /* WiFi abierta */
+    --key:#d98a04;          /* con clave */
+    --down:#8593a3;         /* sin servicio */
+    --danger:#c8412f;
+    --shadow:0 6px 24px rgba(15,27,45,.16);
+    --radius:14px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--surface-2);color:var(--ink)}
+  body{overflow:hidden}
+
+  /* ---- Barra superior ---- */
+  .topbar{
+    position:fixed;top:0;left:0;right:0;z-index:1000;
+    display:flex;align-items:center;gap:12px;
+    padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;
+    background:var(--ink);color:#fff;box-shadow:var(--shadow);
+  }
+  .topbar .dot{width:10px;height:10px;border-radius:50%;background:var(--signal);
+    box-shadow:0 0 0 4px rgba(10,166,184,.25);flex:none}
+  .topbar h1{font-size:15px;font-weight:650;margin:0;line-height:1.15;letter-spacing:.2px}
+  .topbar p{margin:1px 0 0;font-size:11.5px;color:#aab8c9;font-weight:500}
+  .count{margin-left:auto;text-align:right;flex:none}
+  .count b{font-size:18px;font-weight:700;display:block;line-height:1}
+  .count span{font-size:10px;color:#aab8c9;text-transform:uppercase;letter-spacing:.6px}
+
+  /* ---- Mapa ---- */
+  #map{position:absolute;inset:0;top:0;height:100%;width:100%;background:#aac4d8}
+
+  /* ---- Aviso modo local ---- */
+  .banner{
+    position:fixed;left:10px;right:10px;top:64px;z-index:900;
+    background:#fff4dc;border:1px solid #f0d28a;color:#6b4e07;
+    padding:8px 12px;border-radius:10px;font-size:12px;font-weight:500;
+    box-shadow:var(--shadow);display:none;align-items:center;gap:8px;
+  }
+  .banner.show{display:flex}
+
+  /* ---- Leyenda ---- */
+  .legend{
+    position:fixed;left:10px;bottom:calc(env(safe-area-inset-bottom) + 86px);z-index:800;
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    padding:8px 10px;font-size:11.5px;box-shadow:var(--shadow);line-height:1.7
+  }
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+
+  /* ---- Botón reportar ---- */
+  .fab{
+    position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom) + 18px);z-index:900;
+    border:none;cursor:pointer;
+    background:var(--signal);color:#fff;font-weight:650;font-size:15px;
+    padding:14px 22px;border-radius:999px;box-shadow:var(--shadow);
+    display:flex;align-items:center;gap:8px;
+  }
+  .fab:active{transform:translateX(-50%) scale(.97)}
+  .fab svg{width:18px;height:18px}
+
+  /* ---- Hoja inferior (form) ---- */
+  .scrim{position:fixed;inset:0;background:rgba(15,27,45,.45);z-index:1100;
+    opacity:0;pointer-events:none;transition:opacity .2s}
+  .scrim.show{opacity:1;pointer-events:auto}
+  .sheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:1200;
+    background:var(--surface);border-radius:20px 20px 0 0;
+    padding:14px 16px calc(env(safe-area-inset-bottom) + 16px);
+    box-shadow:0 -8px 30px rgba(15,27,45,.25);
+    transform:translateY(100%);transition:transform .26s cubic-bezier(.2,.7,.2,1);
+    max-height:88vh;overflow-y:auto
+  }
+  .sheet.show{transform:translateY(0)}
+  .grip{width:38px;height:4px;border-radius:2px;background:var(--line);margin:2px auto 12px}
+  .sheet h2{margin:0 0 2px;font-size:17px;font-weight:680}
+  .sheet .hint{margin:0 0 14px;font-size:12.5px;color:var(--muted)}
+
+  .field{margin-bottom:13px}
+  .field label{display:block;font-size:12px;font-weight:600;margin-bottom:5px;color:var(--ink)}
+  .field input[type=text]{
+    width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
+    font-size:15px;background:var(--surface-2);color:var(--ink)
+  }
+  .field input:focus{outline:2px solid var(--signal);outline-offset:1px;background:#fff}
+
+  .loc-row{display:flex;gap:8px;align-items:stretch}
+  .loc-row .locbox{
+    flex:1;min-width:0;display:flex;align-items:center;padding:10px 12px;
+    border:1px dashed var(--line);border-radius:10px;background:var(--surface-2);
+    font-size:12.5px;color:var(--muted)
+  }
+  .loc-row .locbox.set{border-style:solid;color:var(--ink);font-weight:600}
+  .btn-ghost{
+    border:1px solid var(--signal);background:#fff;color:var(--signal-ink);
+    font-weight:650;font-size:13px;border-radius:10px;padding:0 14px;cursor:pointer;white-space:nowrap
+  }
+  .btn-ghost:active{background:var(--surface-2)}
+
+  .seg{display:flex;gap:8px}
+  .seg button{
+    flex:1;padding:11px;border:1px solid var(--line);background:var(--surface-2);
+    border-radius:10px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer
+  }
+  .seg button[aria-pressed=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  .submit{
+    width:100%;margin-top:4px;padding:14px;border:none;border-radius:12px;cursor:pointer;
+    background:var(--signal);color:#fff;font-size:16px;font-weight:680
+  }
+  .submit:disabled{opacity:.5}
+  .submit:active:not(:disabled){transform:scale(.99)}
+  .err{color:var(--danger);font-size:12px;font-weight:600;margin:6px 0 0;min-height:14px}
+
+  /* ---- Popups ---- */
+  .pop b{font-size:14px}
+  .pop .meta{font-size:12px;color:var(--muted);margin:3px 0}
+  .pop .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;margin-top:2px}
+  .pop .actions{display:flex;gap:6px;margin-top:9px}
+  .pop .actions a,.pop .actions button{
+    flex:1;text-align:center;text-decoration:none;font-size:12px;font-weight:650;
+    padding:8px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer
+  }
+  .pop .actions .go{background:var(--signal);color:#fff;border-color:var(--signal)}
+
+  /* ---- Toast ---- */
+  .toast{
+    position:fixed;left:50%;transform:translateX(-50%) translateY(20px);
+    bottom:calc(env(safe-area-inset-bottom) + 90px);z-index:1300;
+    background:var(--ink);color:#fff;padding:11px 18px;border-radius:999px;
+    font-size:13px;font-weight:600;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.25s
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="dot" aria-hidden="true"></span>
+  <div>
+    <h1>Puntos WiFi - La Guaira — Emergencia</h1>
+    <p id="mode-label">Cargando…</p>
+  </div>
+  <div class="count"><b id="count-active">0</b><span>activos</span></div>
+</header>
+
+<div id="banner" class="banner" role="status">
+  <span>⚠️ Modo local: lo que cargues solo se ve en este equipo. Conectá el backend para compartir.</span>
+</div>
+
+<div id="map" role="application" aria-label="Mapa de puntos con señal WiFi"></div>
+
+<div class="legend" aria-hidden="true">
+  <i style="background:var(--open)"></i>WiFi abierta<br>
+  <i style="background:var(--key)"></i>Con clave<br>
+  <i style="background:var(--down)"></i>Sin servicio
+</div>
+
+<button class="fab" id="open-form" aria-haspopup="dialog">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  Reportar punto
+</button>
+
+<!-- Hoja del formulario -->
+<div class="scrim" id="scrim"></div>
+<form class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  <div class="grip"></div>
+  <h2 id="sheet-title">Reportar un punto con señal</h2>
+  <p class="hint">Tocá el mapa donde hay señal, o usá tu ubicación. Ayudá a otros con un dato preciso.</p>
+
+  <div class="field">
+    <label>Ubicación</label>
+    <div class="loc-row">
+      <div class="locbox" id="locbox">Tocá el mapa o usá tu ubicación →</div>
+      <button type="button" class="btn-ghost" id="use-gps">Mi ubicación</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="f-name">Lugar / referencia</label>
+    <input type="text" id="f-name" placeholder="Ej: Plaza Bolívar, escuela, comercio" maxlength="60" autocomplete="off">
+  </div>
+
+  <div class="field">
+    <label>Tipo de acceso</label>
+    <div class="seg" id="seg-access">
+      <button type="button" data-v="open" aria-pressed="true">WiFi abierta</button>
+      <button type="button" data-v="key" aria-pressed="false">Con clave</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="f-note">Nota (opcional)</label>
+    <input type="text" id="f-note" placeholder="Ej: clave en el mostrador · horario 8 a 18 h" maxlength="90" autocomplete="off">
+  </div>
+
+  <button type="submit" class="submit" id="submit-btn">Publicar punto</button>
+  <p class="err" id="form-err" aria-live="polite"></p>
+</form>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+(function(){
+  "use strict";
+  const LS_KEY = "starlink_points_v1";
+  const LOCAL = !CONFIG.API_URL;
+
+  // ---------- Estado ----------
+  let points = [];
+  let pickLatLng = null;
+  let pickMarker = null;
+  let access = "open";
+  const markers = {};
+
+  // ---------- Mapa ----------
+  const map = L.map("map", {zoomControl:false}).setView(CONFIG.CENTER, CONFIG.ZOOM);
+  L.control.zoom({position:"bottomright"}).addTo(map);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom:19, attribution:"© OpenStreetMap"
+  }).addTo(map);
+
+  function colorFor(p){
+    if(p.status === "down") return "var(--down)";
+    return p.access === "key" ? "var(--key)" : "var(--open)";
+  }
+  function icon(p){
+    const c = colorFor(p);
+    return L.divIcon({
+      className:"", iconSize:[22,22], iconAnchor:[11,11],
+      html:`<div style="width:18px;height:18px;border-radius:50%;background:${c};
+            border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`
+    });
+  }
+
+  function popupHtml(p){
+    const tag = p.status==="down"
+      ? `<span class="tag" style="background:#eceff3;color:var(--down)">Sin servicio</span>`
+      : p.access==="key"
+        ? `<span class="tag" style="background:#fdf0d9;color:var(--key)">Con clave</span>`
+        : `<span class="tag" style="background:#e3f5ea;color:var(--open)">WiFi abierta</span>`;
+    const note = p.note ? `<div class="meta">${esc(p.note)}</div>` : "";
+    const when = p.ts ? `<div class="meta">Reportado ${ago(p.ts)}</div>` : "";
+    const confirms = (p.confirms||0) > 0 ? ` (${p.confirms})` : "";
+    const dir = `https://www.openstreetmap.org/directions?to=${p.lat},${p.lng}`;
+    return `<div class="pop"><b>${esc(p.name)}</b><br>${tag}${note}${when}
+      <div class="actions">
+        <a class="go" href="${dir}" target="_blank" rel="noopener">Cómo llegar</a>
+        <button type="button" data-confirm="${p.id}">Funciona${confirms}</button>
+      </div></div>`;
+  }
+
+  function render(){
+    Object.values(markers).forEach(m => map.removeLayer(m));
+    let active = 0;
+    points.forEach(p=>{
+      if(p.status !== "down") active++;
+      const m = L.marker([p.lat,p.lng],{icon:icon(p)}).addTo(map).bindPopup(popupHtml(p));
+      markers[p.id] = m;
+    });
+    document.getElementById("count-active").textContent = active;
+  }
+
+  // ---------- Backend ----------
+  async function loadPoints(){
+    if(LOCAL){
+      try{ points = JSON.parse(localStorage.getItem(LS_KEY)||"[]"); }catch(e){ points=[]; }
+      render(); return;
+    }
+    try{
+      const r = await fetch(CONFIG.API_URL, {method:"GET"});
+      const data = await r.json();
+      points = Array.isArray(data) ? data : (data.points||[]);
+      render();
+    }catch(e){
+      toast("No se pudo cargar. Reintentá.");
+    }
+  }
+
+  async function send(action, payload){
+    if(LOCAL){
+      if(action==="add"){
+        points.push(payload);
+      }else if(action==="confirm"){
+        const p = points.find(x=>x.id===payload.id); if(p) p.confirms=(p.confirms||0)+1;
+      }
+      localStorage.setItem(LS_KEY, JSON.stringify(points));
+      return {ok:true};
+    }
+    // text/plain evita el preflight CORS con Apps Script
+    const r = await fetch(CONFIG.API_URL, {
+      method:"POST",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify({action, ...payload})
+    });
+    return r.json();
+  }
+
+  // ---------- Selección de ubicación ----------
+  function setPick(latlng){
+    pickLatLng = latlng;
+    if(pickMarker) map.removeLayer(pickMarker);
+    pickMarker = L.marker(latlng,{
+      icon:L.divIcon({className:"",iconSize:[26,26],iconAnchor:[13,13],
+      html:`<div style="width:20px;height:20px;border-radius:50%;background:var(--signal);
+            border:3px solid #fff;box-shadow:0 0 0 6px rgba(10,166,184,.25)"></div>`})
+    }).addTo(map);
+    const box = document.getElementById("locbox");
+    box.textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+    box.classList.add("set");
+  }
+  map.on("click", e=>{ if(document.getElementById("sheet").classList.contains("show")) setPick(e.latlng); });
+
+  document.getElementById("use-gps").addEventListener("click", ()=>{
+    if(!navigator.geolocation){ formErr("Tu equipo no permite geolocalización. Tocá el mapa."); return; }
+    formErr("");
+    navigator.geolocation.getCurrentPosition(
+      pos=>{ const ll=L.latLng(pos.coords.latitude,pos.coords.longitude); map.setView(ll,16); setPick(ll); },
+      ()=> formErr("No pudimos obtener tu ubicación. Tocá el mapa para marcarla."),
+      {enableHighAccuracy:true,timeout:8000}
+    );
+  });
+
+  // ---------- Form: abrir / cerrar ----------
+  const sheet=document.getElementById("sheet"), scrim=document.getElementById("scrim");
+  function openSheet(){ sheet.classList.add("show"); scrim.classList.add("show"); }
+  function closeSheet(){ sheet.classList.remove("show"); scrim.classList.remove("show"); }
+  document.getElementById("open-form").addEventListener("click", openSheet);
+  scrim.addEventListener("click", closeSheet);
+
+  // segmented control
+  document.getElementById("seg-access").addEventListener("click", e=>{
+    const b=e.target.closest("button"); if(!b) return;
+    access=b.dataset.v;
+    [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed", x===b));
+  });
+
+  function formErr(m){ document.getElementById("form-err").textContent=m||""; }
+
+  // ---------- Submit ----------
+  document.getElementById("sheet").addEventListener("submit", async (e)=>{
+    e.preventDefault();
+    const name = document.getElementById("f-name").value.trim();
+    const note = document.getElementById("f-note").value.trim();
+    if(!pickLatLng){ formErr("Marcá la ubicación en el mapa o con tu GPS."); return; }
+    if(!name){ formErr("Poné una referencia del lugar."); return; }
+    formErr("");
+    const btn=document.getElementById("submit-btn");
+    btn.disabled=true; btn.textContent="Publicando…";
+
+    const p = {
+      id: "p_"+Date.now()+"_"+Math.random().toString(36).slice(2,7),
+      name, note, access,
+      lat:+pickLatLng.lat.toFixed(6), lng:+pickLatLng.lng.toFixed(6),
+      status:"active", confirms:0, ts: Date.now()
+    };
+    try{
+      await send("add", p);
+      points.push(p); render();
+      resetForm(); closeSheet(); toast("Punto publicado. ¡Gracias!");
+    }catch(err){
+      formErr("No se pudo publicar. Revisá tu conexión y reintentá.");
+    }finally{
+      btn.disabled=false; btn.textContent="Publicar punto";
+    }
+  });
+
+  function resetForm(){
+    document.getElementById("f-name").value="";
+    document.getElementById("f-note").value="";
+    if(pickMarker){ map.removeLayer(pickMarker); pickMarker=null; }
+    pickLatLng=null;
+    const box=document.getElementById("locbox");
+    box.textContent="Tocá el mapa o usá tu ubicación →"; box.classList.remove("set");
+  }
+
+  // ---------- Confirmar "funciona" ----------
+  map.on("popupopen", e=>{
+    const node=e.popup.getElement();
+    const btn=node && node.querySelector("[data-confirm]");
+    if(btn) btn.addEventListener("click", async ()=>{
+      const id=btn.getAttribute("data-confirm");
+      btn.disabled=true;
+      try{
+        await send("confirm",{id});
+        const p=points.find(x=>x.id===id); if(p){ p.confirms=(p.confirms||0)+1; markers[id].setPopupContent(popupHtml(p)); }
+        toast("Confirmación registrada.");
+      }catch(err){ btn.disabled=false; }
+    });
+  });
+
+  // ---------- Util ----------
+  function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+  function ago(ts){
+    const m=Math.round((Date.now()-ts)/60000);
+    if(m<1) return "recién"; if(m<60) return `hace ${m} min`;
+    const h=Math.round(m/60); if(h<24) return `hace ${h} h`;
+    return `hace ${Math.round(h/24)} d`;
+  }
+  let toastT;
+  function toast(msg){
+    const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+    clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2600);
+  }
+
+  // ---------- Init ----------
+  document.getElementById("mode-label").textContent = LOCAL ? "Modo local (sin compartir)" : "En vivo · colaborativo";
+  if(LOCAL) document.getElementById("banner").classList.add("show");
+  loadPoints();
+  if(!LOCAL) setInterval(loadPoints, 30000); // refresco cada 30 s
+})();
+</script>
+</body>
+</html>
