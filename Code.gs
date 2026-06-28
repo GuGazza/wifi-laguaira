@@ -10,24 +10,29 @@
  *
  *   id | name | lat | lng | access | status | note | ts | confirms
  *
- * Si los nombres no coinciden con los campos que envía el frontend, la
- * acción "add" grabará celdas vacías.
- *
  * DESPLIEGUE — tras cualquier cambio:
  *   Implementar → Administrar implementaciones → ✏️ → Nueva versión → Implementar
  *   (la URL /exec no cambia, así que no hay que tocar worker.js)
+ *
+ * NOTIFICACIONES POR EMAIL — configurar en Script Properties:
+ *   Apps Script → Configuración del proyecto (⚙️) → Propiedades del script
+ *
+ *   Propiedad      | Valor de ejemplo
+ *   ---------------|-----------------------------------------
+ *   NOTIFY_ENABLED | true          (o false para desactivar)
+ *   EMAIL_TO       | admin@gmail.com, otro@gmail.com
  *
  * Acceso del Web App: "Ejecutar como: Yo" · "Quién tiene acceso: Cualquier usuario".
  */
 
 const SS    = SpreadsheetApp.getActiveSpreadsheet();
-const SHEET = SS.getSheetByName('Sheet1') || SS.getSheets()[0];   // 'Sheet1' o, si no existe, la 1ra pestaña
+const SHEET = SS.getSheetByName('Sheet1') || SS.getSheets()[0];
 
 /** GET → devuelve todos los puntos como JSON. */
 function doGet(e) {
   var filas = SHEET.getDataRange().getValues();
-  if (filas.length < 2) return _json([]);            // hoja vacía o solo encabezado
-  var cab = filas.shift();                            // 1ra fila = nombres de columna
+  if (filas.length < 2) return _json([]);
+  var cab = filas.shift();
   var puntos = filas.map(function(f){
     var o = {}; cab.forEach(function(c, i){ o[c] = f[i]; }); return o;
   });
@@ -36,12 +41,13 @@ function doGet(e) {
 
 /** POST → maneja las acciones "add" (alta de punto) y "confirm" (suma un voto). */
 function doPost(e) {
-  var datos = JSON.parse(e.postData.contents);        // el body llega como text/plain
+  var datos = JSON.parse(e.postData.contents);
   var cab   = SHEET.getRange(1, 1, 1, SHEET.getLastColumn()).getValues()[0];
 
   if (datos.action === "add") {
     var fila = cab.map(function(col){ return datos[col] !== undefined ? datos[col] : ""; });
     SHEET.appendRow(fila);
+    _notifyEmail(datos);
     return _json({ ok: true });
   }
 
@@ -58,7 +64,6 @@ function doPost(e) {
     return _json({ ok: true });
   }
 
-  // feature out-of-service: cambia el estado de un punto ("active" / "down")
   if (datos.action === "setStatus") {
     var idC = cab.indexOf("id");
     var stC = cab.indexOf("status");
@@ -66,6 +71,11 @@ function doPost(e) {
     for (var j = 1; j < fs.length; j++) {
       if (fs[j][idC] === datos.id) {
         SHEET.getRange(j + 1, stC + 1).setValue(datos.status);
+        // arma un objeto con los datos completos del punto para el email
+        var puntoActualizado = {};
+        cab.forEach(function(c, i){ puntoActualizado[c] = fs[j][i]; });
+        puntoActualizado.status = datos.status; // refleja el nuevo estado
+        _notifyEmail(puntoActualizado);
         break;
       }
     }
@@ -79,4 +89,39 @@ function doPost(e) {
 function _json(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Envía email al registrarse un nuevo punto WiFi o al cambiar su estado.
+ * Se activa/desactiva y configura desde Script Properties (sin tocar este código):
+ *   NOTIFY_ENABLED = true | false
+ *   EMAIL_TO       = destinatarios separados por coma
+ */
+function _notifyEmail(datos) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty("NOTIFY_ENABLED") !== "true") return;
+  var to = props.getProperty("EMAIL_TO");
+  if (!to) return;
+
+  var acceso = datos.access === "key" ? "Con clave" : "WiFi abierta";
+  var estado = datos.status === "down" ? "Sin servicio" : acceso;
+  var esNuevo = datos.action === "add";
+
+  try {
+    MailApp.sendEmail({
+      to:      to,
+      subject: esNuevo
+        ? "📶 Nuevo punto WiFi: " + (datos.name || "sin nombre")
+        : "🔄 Estado actualizado: " + (datos.name || "sin nombre") + " → " + estado,
+      body:
+        (esNuevo ? "Nuevo punto WiFi reportado en el mapa." : "Un punto WiFi cambió de estado.") + "\n\n" +
+        "Nombre   : " + (datos.name || "–") + "\n" +
+        "Estado   : " + estado              + "\n" +
+        "Nota     : " + (datos.note || "–") + "\n" +
+        "Coords   : " + datos.lat + ", " + datos.lng + "\n" +
+        "Ver en mapa: https://maps.google.com/?q=" + datos.lat + "," + datos.lng
+    });
+  } catch(e) {
+    Logger.log("Email error: " + e);
+  }
 }
