@@ -36,6 +36,15 @@ export default {
     }
 
     // resto -> archivos estáticos (index.html, etc.)
-    return env.ASSETS.fetch(request);
+    const response = await env.ASSETS.fetch(request);
+    const contentType = response.headers.get("Content-Type") ?? "";
+    if (!contentType.includes("text/html")) return response;
+
+    // El HTML nunca debe servirse desde caché sin validar: así los deploys
+    // son visibles de inmediato sin que el usuario tenga que limpiar caché.
+    // no-cache = revalidar con el servidor (304 si no cambió, sin costo de red).
+    const fresh = new Response(response.body, response);
+    fresh.headers.set("Cache-Control", "no-cache");
+    return fresh;
   },
 };
