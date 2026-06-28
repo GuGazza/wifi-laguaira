@@ -161,3 +161,50 @@ function probarEmail() {
   Logger.log("Correo de prueba enviado a: " + to);
   Logger.log("Cuota diaria de correos restante: " + MailApp.getRemainingDailyQuota());
 }
+
+/**
+ * Notifica por email cuando se edita la columna `status` directamente en la hoja.
+ *
+ * IMPORTANTE — esto NO se activa solo: hay que crear un ACTIVADOR INSTALABLE
+ * (los activadores simples no pueden usar MailApp porque requiere autorización):
+ *   Apps Script → ⏰ Activadores → + Añadir activador
+ *     Función a ejecutar : onEditStatus
+ *     Implementación     : Head
+ *     Origen del evento  : De la hoja de cálculo
+ *     Tipo de evento     : Al editar
+ *   (la primera vez pedirá autorización: aceptala)
+ */
+function onEditStatus(e) {
+  if (!e || !e.range) return;
+  var sh = e.range.getSheet();
+  if (sh.getName() !== SHEET.getName()) return;   // solo la hoja de puntos
+  if (e.range.getRow() === 1) return;             // ignora la fila de encabezados
+
+  var cab   = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  var stCol = cab.indexOf("status") + 1;
+  if (stCol === 0 || e.range.getColumn() !== stCol) return;  // solo la columna `status`
+
+  var fila  = sh.getRange(e.range.getRow(), 1, 1, sh.getLastColumn()).getValues()[0];
+  var datos = {};
+  cab.forEach(function(c, i) { datos[c] = fila[i]; });
+  datos.status = e.range.getValue();   // valor recién editado
+  // sin datos.action => _notifyEmail lo trata como "cambio de estado"
+
+  _notifyEmail(datos);
+}
+
+/**
+ * DIAGNÓSTICO — ejecutar MANUALMENTE desde el editor.
+ * Simula la notificación de un cambio de estado (sin tocar la hoja),
+ * para confirmar que el correo "🔄 Estado actualizado" sale con buen formato.
+ */
+function probarCambioEstado() {
+  _notifyEmail({
+    name:   "PRUEBA — cambio de estado",
+    access: "open",
+    note:   "Punto de prueba",
+    status: "down",
+    lat: 10.61, lng: -66.88
+  });
+  Logger.log("Notificación de cambio de estado enviada. Revisá tu correo (y Spam).");
+}
