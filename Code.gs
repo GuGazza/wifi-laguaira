@@ -125,3 +125,39 @@ function _notifyEmail(datos) {
     Logger.log("Email error: " + e);
   }
 }
+
+/**
+ * DIAGNÓSTICO — ejecutar MANUALMENTE desde el editor de Apps Script.
+ * (Elegí "probarEmail" en el selector de funciones y pulsá ▶ Ejecutar.)
+ *
+ * La PRIMERA vez Google pedirá autorización para enviar correos: aceptala.
+ * Ese es el paso clave: sin esta autorización, el envío automático del
+ * formulario falla en silencio para visitantes anónimos.
+ *
+ * Luego revisá:
+ *   • el registro (abajo, "Registro de ejecución") → muestra los valores guardados
+ *   • tu bandeja de entrada (y la carpeta de Spam) → debería llegar la prueba
+ */
+function probarEmail() {
+  var props   = PropertiesService.getScriptProperties();
+  var enabled = props.getProperty("NOTIFY_ENABLED");
+  var to      = props.getProperty("EMAIL_TO");
+
+  Logger.log("NOTIFY_ENABLED = [" + enabled + "]   (debe ser exactamente: true)");
+  Logger.log("EMAIL_TO       = [" + to + "]");
+
+  if (!to) {
+    Logger.log("⚠️ EMAIL_TO está vacío. Configuralo en Propiedades del script.");
+    return;
+  }
+
+  MailApp.sendEmail({
+    to:      to,
+    subject: "✅ Prueba de notificación — Mapa de Puntos WiFi",
+    body:    "Si recibís este correo, las notificaciones funcionan.\n\n" +
+             "NOTIFY_ENABLED = " + enabled + "\n" +
+             "EMAIL_TO = " + to
+  });
+  Logger.log("Correo de prueba enviado a: " + to);
+  Logger.log("Cuota diaria de correos restante: " + MailApp.getRemainingDailyQuota());
+}
